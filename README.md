@@ -19,6 +19,7 @@
 - 默认将管理面板仅绑定到本机（`127.0.0.1:9090`），如需对外访问请在`.env`中自行配置并确保`CLASH_SECRET`足够复杂。
 - 默认开启 TLS 证书校验，若确需跳过校验请在`.env`中设置`ALLOW_INSECURE_TLS=true`（不推荐）。
 - 如从旧版本升级，若存在 `/etc/profile.d/clash.sh` 请按需清理或改用新的 `/etc/profile.d/clash-for-linux.sh`。
+
 - 当前在RHEL系列和Debian系列Linux系统中测试过，其他系列可能需要适当修改脚本。
 - 支持 x86_64/aarch64 平台
 
