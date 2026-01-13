@@ -1,0 +1,16 @@
+[Unit]
+Description=Clash for Linux
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/clash-for-linux
+ExecStart=/bin/bash /opt/clash-for-linux/start.sh
+ExecStop=/bin/bash /opt/clash-for-linux/shutdown.sh
+Restart=on-failure
+RestartSec=5
+User=root
+PIDFile=/opt/clash-for-linux/temp/clash.pid
+
+[Install]
+WantedBy=multi-user.target

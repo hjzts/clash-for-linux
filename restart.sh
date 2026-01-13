@@ -40,17 +40,52 @@ if_success() {
 Server_Dir=$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)
 Conf_Dir="$Server_Dir/conf"
 Log_Dir="$Server_Dir/logs"
+Temp_Dir="$Server_Dir/temp"
+PID_FILE="$Temp_Dir/clash.pid"
+
+if [ "$1" = "--update" ]; then
+	bash "$Server_Dir/update.sh" || exit 1
+fi
 
 ## 关闭clash服务
 Text1="服务关闭成功！"
 Text2="服务关闭失败！"
 # 查询并关闭程序进程
-PID_NUM=`ps -ef | grep [c]lash-linux-a | wc -l`
-PID=`ps -ef | grep [c]lash-linux-a | awk '{print $2}'`
-if [ $PID_NUM -ne 0 ]; then
-	kill -9 $PID
-  ReturnStatus=$?
-	# ps -ef | grep [c]lash-linux-a | awk '{print $2}' | xargs kill -9
+if [ -f "$PID_FILE" ]; then
+	PID=$(cat "$PID_FILE")
+	if [ -n "$PID" ]; then
+		kill "$PID"
+		ReturnStatus=$?
+		for i in {1..5}; do
+			sleep 1
+			if ! kill -0 "$PID" 2>/dev/null; then
+				break
+			fi
+		done
+		if kill -0 "$PID" 2>/dev/null; then
+			kill -9 "$PID"
+		fi
+	else
+		ReturnStatus=1
+	fi
+	rm -f "$PID_FILE"
+else
+	PIDS=$(pgrep -f "clash-linux-")
+	if [ -n "$PIDS" ]; then
+		kill $PIDS
+		ReturnStatus=$?
+		for i in {1..5}; do
+			sleep 1
+			if ! pgrep -f "clash-linux-" >/dev/null; then
+				break
+			fi
+		done
+		if pgrep -f "clash-linux-" >/dev/null; then
+			kill -9 $PIDS
+		fi
+	else
+		ReturnStatus=0
+	fi
 fi
 if_success $Text1 $Text2 $ReturnStatus
 
@@ -73,18 +108,29 @@ Text5="服务启动成功！"
 Text6="服务启动失败！"
 if [[ $CpuArch =~ "x86_64" ]]; then
 	nohup $Server_Dir/bin/clash-linux-amd64 -d $Conf_Dir &> $Log_Dir/clash.log &
+	PID=$!
 	ReturnStatus=$?
+	if [ $ReturnStatus -eq 0 ]; then
+		echo "$PID" > "$PID_FILE"
+	fi
 	if_success $Text5 $Text6 $ReturnStatus
 elif [[ $CpuArch =~ "aarch64" ||  $CpuArch =~ "arm64" ]]; then
 	nohup $Server_Dir/bin/clash-linux-arm64 -d $Conf_Dir &> $Log_Dir/clash.log &
+	PID=$!
 	ReturnStatus=$?
+	if [ $ReturnStatus -eq 0 ]; then
+		echo "$PID" > "$PID_FILE"
+	fi
 	if_success $Text5 $Text6 $ReturnStatus
 elif [[ $CpuArch =~ "armv7" ]]; then
 	nohup $Server_Dir/bin/clash-linux-armv7 -d $Conf_Dir &> $Log_Dir/clash.log &
+	PID=$!
 	ReturnStatus=$?
+	if [ $ReturnStatus -eq 0 ]; then
+		echo "$PID" > "$PID_FILE"
+	fi
 	if_success $Text5 $Text6 $ReturnStatus
 else
 	echo -e "\033[31m\n[ERROR] Unsupported CPU Architecture！\033[0m"
 	exit 1
 fi
-
