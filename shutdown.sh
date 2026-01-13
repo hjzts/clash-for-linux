@@ -36,6 +36,18 @@ else
 fi
 
 # 清除环境变量
-> /etc/profile.d/clash-for-linux.sh
+Env_File="${CLASH_ENV_FILE:-}"
+if [ "$Env_File" != "off" ] && [ "$Env_File" != "disabled" ]; then
+	if [ -z "$Env_File" ]; then
+		if [ -w /etc/profile.d ]; then
+			Env_File="/etc/profile.d/clash-for-linux.sh"
+		else
+			Env_File="$Temp_Dir/clash-for-linux.sh"
+		fi
+	fi
+	if [ -f "$Env_File" ]; then
+		> "$Env_File"
+	fi
+fi
 
 echo -e "\n服务关闭成功，请执行以下命令关闭系统代理：proxy_off\n"

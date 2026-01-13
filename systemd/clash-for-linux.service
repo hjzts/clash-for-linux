@@ -9,8 +9,10 @@ ExecStart=/bin/bash /opt/clash-for-linux/start.sh
 ExecStop=/bin/bash /opt/clash-for-linux/shutdown.sh
 Restart=on-failure
 RestartSec=5
-User=root
+User=clash
+Group=clash
 PIDFile=/opt/clash-for-linux/temp/clash.pid
+Environment=CLASH_ENV_FILE=/opt/clash-for-linux/temp/clash-for-linux.sh
 
 [Install]
 WantedBy=multi-user.target

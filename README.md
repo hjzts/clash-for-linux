@@ -159,11 +159,10 @@ $ proxy_off
 
 ## systemd 服务
 
-将仓库中的 `systemd/clash-for-linux.service` 复制到 `/etc/systemd/system/`，并根据实际路径修改 `WorkingDirectory` 与脚本路径：
+推荐使用自动安装脚本生成 systemd 单元（自动识别安装路径、创建低权限用户并修正目录权限）：
 
 ```bash
-$ sudo cp systemd/clash-for-linux.service /etc/systemd/system/
-$ sudo vim /etc/systemd/system/clash-for-linux.service
+$ sudo bash scripts/install_systemd.sh
 ```
 
 启用并启动服务：
@@ -178,6 +177,41 @@ $ sudo systemctl enable --now clash-for-linux.service
 ```bash
 $ sudo systemctl stop clash-for-linux.service
 ```
+
+> 如需自定义运行用户，可在执行脚本前设置 `CLASH_SERVICE_USER`（可选 `CLASH_SERVICE_GROUP`）。
+> 默认使用 `clash` 用户运行服务，systemd 环境文件输出到 `temp/clash-for-linux.sh`。
+
+如果需要手动安装，可参考 `systemd/clash-for-linux.service` 模板并替换安装路径。
+
+
+<br>
+
+## subconverter 多架构支持
+
+`subconverter` 用于将订阅内容转换为标准 clash 配置。默认会尝试以下位置：
+
+- `tools/subconverter/subconverter`
+- `tools/subconverter/subconverter-<arch>`
+- `tools/subconverter/bin/subconverter-<arch>`
+
+其中 `<arch>` 取值为：
+
+- `linux-amd64`
+- `linux-arm64`
+- `linux-armv7`
+
+你也可以设置：
+
+- `SUBCONVERTER_PATH`：指定自定义 `subconverter` 可执行文件路径。
+- `SUBCONVERTER_AUTO_DOWNLOAD=true`：启用自动下载（需 `curl`/`wget`）。
+- `SUBCONVERTER_DOWNLOAD_URL_TEMPLATE`：下载模板，使用 `{arch}` 占位符，如：
+
+```bash
+export SUBCONVERTER_AUTO_DOWNLOAD=true
+export SUBCONVERTER_DOWNLOAD_URL_TEMPLATE='https://example.com/subconverter_{arch}.tar.gz'
+```
+
+当 `subconverter` 不可用时会自动跳过转换，并提示警告。
 
 
 <br>

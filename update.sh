@@ -152,8 +152,10 @@ if_success $Text3 $Text4 $ReturnStatus
 \cp -a $Temp_Dir/clash.yaml $Temp_Dir/clash_config.yaml
 
 ## 判断订阅内容是否符合clash配置文件标准，尝试转换（需 subconverter 可执行文件支持）
-if [ -x "$Server_Dir/tools/subconverter/subconverter" ]; then
+source $Server_Dir/scripts/resolve_subconverter.sh
+if [ "$Subconverter_Ready" = "true" ]; then
 	echo -e '\n判断订阅内容是否符合clash配置文件标准:'
+	export SUBCONVERTER_BIN="$Subconverter_Bin"
 	bash $Server_Dir/scripts/clash_profile_conversion.sh
 	sleep 3
 else

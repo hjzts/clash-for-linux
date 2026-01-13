@@ -21,7 +21,11 @@ else
       echo "$decoded_content" > ${Server_Dir}/temp/clash_config.yaml
     else
       echo "解码后的内容不符合clash标准，尝试将其转换为标准格式"
-      ${Server_Dir}/tools/subconverter/subconverter -g &>> ${Server_Dir}/logs/subconverter.log
+      if [ -z "$SUBCONVERTER_BIN" ]; then
+        echo "subconverter 未配置，无法执行转换"
+        exit 1
+      fi
+      "${SUBCONVERTER_BIN}" -g &>> ${Server_Dir}/logs/subconverter.log
       converted_file=${Server_Dir}/temp/clash_config.yaml
       # 判断转换后的内容是否符合clash配置文件标准
       if awk '/^proxies:/{p=1} /^proxy-groups:/{g=1} /^rules:/{r=1} p&&g&&r{exit} END{if(p&&g&&r) exit 0; else exit 1}' $converted_file; then

@@ -12,9 +12,11 @@ export Server_Dir=$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)
 source $Server_Dir/.env
 
 # 给二进制启动程序、脚本等添加可执行权限
-chmod +x $Server_Dir/bin/*
-chmod +x $Server_Dir/scripts/*
-chmod +x $Server_Dir/tools/subconverter/subconverter
+chmod +x $Server_Dir/bin/* 2>/dev/null
+chmod +x $Server_Dir/scripts/* 2>/dev/null
+if [ -f "$Server_Dir/tools/subconverter/subconverter" ]; then
+	chmod +x $Server_Dir/tools/subconverter/subconverter 2>/dev/null
+fi
 
 
 
@@ -175,8 +177,10 @@ if_success $Text3 $Text4 $ReturnStatus
 
 
 ## 判断订阅内容是否符合clash配置文件标准，尝试转换（需 subconverter 可执行文件支持）
-if [ -x "$Server_Dir/tools/subconverter/subconverter" ]; then
+source $Server_Dir/scripts/resolve_subconverter.sh
+if [ "$Subconverter_Ready" = "true" ]; then
 	echo -e '\n判断订阅内容是否符合clash配置文件标准:'
+	export SUBCONVERTER_BIN="$Subconverter_Bin"
 	bash $Server_Dir/scripts/clash_profile_conversion.sh
 	sleep 3
 else
@@ -262,11 +266,23 @@ else
 fi
 echo ''
 
-# 添加环境变量(root权限) - 使用配置的端口
-if [ -f /etc/profile.d/clash.sh ]; then
-	echo -e "\033[33m[WARN] 检测到旧版环境变量文件 /etc/profile.d/clash.sh，建议确认是否需要清理\033[0m"
-fi
-cat>/etc/profile.d/clash-for-linux.sh<<EOF
+# 添加环境变量 - 使用配置的端口
+Env_File="${CLASH_ENV_FILE:-}"
+if [ "$Env_File" = "off" ] || [ "$Env_File" = "disabled" ]; then
+	echo -e "\033[33m[WARN] 已关闭环境变量文件生成\033[0m"
+else
+	if [ -z "$Env_File" ]; then
+		if [ -w /etc/profile.d ]; then
+			Env_File="/etc/profile.d/clash-for-linux.sh"
+		else
+			Env_File="$Temp_Dir/clash-for-linux.sh"
+		fi
+	fi
+	if [ -f /etc/profile.d/clash.sh ]; then
+		echo -e "\033[33m[WARN] 检测到旧版环境变量文件 /etc/profile.d/clash.sh，建议确认是否需要清理\033[0m"
+	fi
+	mkdir -p "$(dirname "$Env_File")"
+	cat>"$Env_File"<<EOF
 # 开启系统代理
 function proxy_on() {
 	export http_proxy=http://${CLASH_LISTEN_IP}:${CLASH_HTTP_PORT}
@@ -290,6 +306,7 @@ function proxy_off(){
 }
 EOF
 
-echo -e "请执行以下命令加载环境变量: source /etc/profile.d/clash-for-linux.sh\n"
+echo -e "请执行以下命令加载环境变量: source ${Env_File}\n"
 echo -e "请执行以下命令开启系统代理: proxy_on\n"
 echo -e "若要临时关闭系统代理，请执行: proxy_off\n"
+fi
