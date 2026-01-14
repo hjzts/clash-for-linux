@@ -68,7 +68,12 @@ fi
 
 # 兜底生成随机 secret
 if [ -z "$Secret" ]; then
-  Secret="$(openssl rand -hex 32)"
+  if command -v openssl >/dev/null 2>&1; then
+    Secret="$(openssl rand -hex 32)"
+  else
+    # 32 bytes -> 64 hex chars
+    Secret="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  fi
 fi
 
 # 强制写入 secret 到指定配置文件（存在则替换，不存在则追加）
@@ -89,7 +94,7 @@ force_write_secret() {
 CLASH_HTTP_PORT="${CLASH_HTTP_PORT:-7890}"
 CLASH_SOCKS_PORT="${CLASH_SOCKS_PORT:-7891}"
 CLASH_REDIR_PORT="${CLASH_REDIR_PORT:-7892}"
-CLASH_LISTEN_IP="${CLASH_LISTEN_IP:-0.0.0.0}"
+CLASH_LISTEN_IP="${CLASH_LISTEN_IP:-127.0.0.1}"
 CLASH_ALLOW_LAN="${CLASH_ALLOW_LAN:-false}"
 
 EXTERNAL_CONTROLLER_ENABLED="${EXTERNAL_CONTROLLER_ENABLED:-true}"
@@ -103,7 +108,7 @@ source "$Server_Dir/scripts/port_utils.sh"
 CLASH_HTTP_PORT="$(resolve_port_value "HTTP" "$CLASH_HTTP_PORT")"
 CLASH_SOCKS_PORT="$(resolve_port_value "SOCKS" "$CLASH_SOCKS_PORT")"
 CLASH_REDIR_PORT="$(resolve_port_value "REDIR" "$CLASH_REDIR_PORT")"
-EXTERNAL_CONTROLLER="$(resolve_host_port "External Controller" "$EXTERNAL_CONTROLLER" "0.0.0.0")"
+EXTERNAL_CONTROLLER="$(resolve_host_port "External Controller" "$EXTERNAL_CONTROLLER" "127.0.0.1")"
 
 # shellcheck disable=SC1090
 source "$Server_Dir/scripts/config_utils.sh"
@@ -338,9 +343,25 @@ if [ "$SKIP_CONFIG_REBUILD" != "true" ]; then
 
   # Configure Clash Dashboard
   Work_Dir="$(cd "$(dirname "$0")" && pwd)"
-  Dashboard_Dir="${Work_Dir}/dashboard/public"
+
+  # SAFE_PATHS: only allow paths under $Conf_Dir, so place dashboard under conf via symlink
+  Dashboard_Src="${Work_Dir}/dashboard/public"
+  Dashboard_Link="${Conf_Dir}/ui"
+  
   if [ "$EXTERNAL_CONTROLLER_ENABLED" = "true" ]; then
-    sed -ri "s@^# external-ui:.*@external-ui: ${Dashboard_Dir}@g" "$Conf_Dir/config.yaml" || true
+    # create/update symlink
+    if [ -d "$Dashboard_Src" ]; then
+      ln -sfn "$Dashboard_Src" "$Dashboard_Link"
+    else
+      echo -e "\033[33m[WARN]\033[0m Dashboard source not found: $Dashboard_Src (external-ui may not work)"
+    fi
+  
+    # ensure external-ui points to conf subpath
+    if grep -qE '^[[:space:]]*external-ui:' "$Conf_Dir/config.yaml"; then
+      sed -i -E "s|^[[:space:]]*external-ui:.*$|external-ui: ${Dashboard_Link}|g" "$Conf_Dir/config.yaml"
+    else
+      printf "\nexternal-ui: %s\n" "$Dashboard_Link" >> "$Conf_Dir/config.yaml"
+    fi
   fi
 
   # 写入 secret
