@@ -68,7 +68,12 @@ fi
 
 # 兜底生成随机 secret
 if [ -z "$Secret" ]; then
-  Secret="$(openssl rand -hex 32)"
+  if command -v openssl >/dev/null 2>&1; then
+    Secret="$(openssl rand -hex 32)"
+  else
+    # 32 bytes -> 64 hex chars
+    Secret="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  fi
 fi
 
 # 强制写入 secret 到指定配置文件（存在则替换，不存在则追加）
