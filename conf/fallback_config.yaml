@@ -5,11 +5,5 @@ log-level: info
 
 proxies: []
 
-proxy-groups:
-  - name: DIRECT
-    type: select
-    proxies:
-      - DIRECT
-
 rules:
   - MATCH,DIRECT
