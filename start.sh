@@ -97,6 +97,8 @@ if [[ -z "$CpuArch" ]]; then
 	exit 1
 fi
 
+source "$Server_Dir/scripts/resolve_clash.sh"
+
 
 ## 临时取消环境变量
 unset http_proxy
@@ -223,66 +225,12 @@ fi
 sed -r -i '/^secret: /s@(secret: ).*@\1'${Secret}'@g' $Conf_Dir/config.yaml
 
 
-resolve_clash_arch() {
-	local raw_arch="$1"
-	case "$raw_arch" in
-		x86_64|amd64)
-			echo "linux-amd64"
-			;;
-		aarch64|arm64)
-			echo "linux-arm64"
-			;;
-		armv7*|armv7l)
-			echo "linux-armv7"
-			;;
-		*)
-			echo "linux-${raw_arch}"
-			;;
-	esac
-}
-
-resolve_clash_bin() {
-	local detected_arch="${CpuArch:-$(uname -m 2>/dev/null)}"
-	local resolved_arch
-	local candidates=()
-
-	if [ -n "$CLASH_BIN" ]; then
-		if [ -x "$CLASH_BIN" ]; then
-			echo "$CLASH_BIN"
-			return 0
-		fi
-		echo -e "\033[31m[ERROR] CLASH_BIN 指定的文件不可执行: $CLASH_BIN\033[0m"
-		return 1
-	fi
-
-	resolved_arch=$(resolve_clash_arch "$detected_arch")
-	if [ -n "$resolved_arch" ]; then
-		candidates+=("$Server_Dir/bin/clash-${resolved_arch}")
-	fi
-	candidates+=(
-		"$Server_Dir/bin/clash-${detected_arch}"
-		"$Server_Dir/bin/clash"
-	)
-
-	for candidate in "${candidates[@]}"; do
-		if [ -x "$candidate" ]; then
-			echo "$candidate"
-			return 0
-		fi
-	done
-
-	echo -e "\033[31m\n[ERROR] 未找到可用的 Clash 二进制。\033[0m"
-	echo -e "请将对应架构的二进制放入: $Server_Dir/bin/"
-	echo -e "可用命名示例: clash-${resolved_arch} 或 clash-${detected_arch}"
-	echo -e "或通过 CLASH_BIN 指定自定义路径。"
-	return 1
-}
 
 ## 启动Clash服务
 echo -e '\n正在启动Clash服务...'
 Text5="服务启动成功！"
 Text6="服务启动失败！"
-Clash_Bin=$(resolve_clash_bin)
+Clash_Bin=$(resolve_clash_bin "$Server_Dir" "$CpuArch")
 ReturnStatus=$?
 if [ $ReturnStatus -eq 0 ]; then
 	nohup "$Clash_Bin" -d "$Conf_Dir" &> "$Log_Dir/clash.log" &

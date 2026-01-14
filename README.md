@@ -88,6 +88,31 @@ $ source /etc/profile.d/clash-for-linux.sh
 $ proxy_on
 ```
 
+<br>
+
+## 一键安装/卸载
+
+脚本会自动识别安装路径、创建低权限用户、检测端口冲突，并根据架构自动下载 Clash 内核（可通过 `CLASH_DOWNLOAD_URL_TEMPLATE` 自定义下载地址）。
+
+```bash
+$ sudo bash install.sh
+```
+
+如需调整安装路径或服务行为，可使用以下环境变量：
+
+- `CLASH_INSTALL_DIR`：默认 `/opt/clash-for-linux`
+- `CLASH_SERVICE_USER` / `CLASH_SERVICE_GROUP`：systemd 运行用户/组
+- `CLASH_ENABLE_SERVICE`：是否 `systemctl enable`（默认 `true`）
+- `CLASH_START_SERVICE`：是否 `systemctl start`（默认 `true`）
+- `CLASH_AUTO_DOWNLOAD`：是否自动下载 Clash 内核（默认 `auto`）
+- `CLASH_DOWNLOAD_URL_TEMPLATE`：自定义下载模板（默认 `https://github.com/Dreamacro/clash/releases/latest/download/clash-{arch}.gz`）
+
+卸载：
+
+```bash
+$ sudo bash uninstall.sh
+```
+
 - 检查服务端口
 
 ```bash
