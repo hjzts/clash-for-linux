@@ -46,9 +46,10 @@
 
 📅 **持续维护中**
  最近更新：**2026-01-13**
-<br>
 
-# 使用教程
+
+
+# 安装
 
 > **推荐路径优先，一键安装即可满足 90% 使用场景。**
 >  手动模式适合调试、二次开发或自定义部署。
@@ -244,6 +245,45 @@ sudo bash uninstall.sh
 
 <br>
 
+### 🌐 Clash Dashboard
+
+默认情况下，Clash 管理接口 **仅监听在服务器本机**：
+
+```
+127.0.0.1:9090
+```
+
+这是一个**安全默认策略**，避免管理接口直接暴露在公网。
+
+如果你希望在 **本地电脑的浏览器中访问服务器上的 Dashboard**，可以使用 SSH 端口转发。
+
+#### 通过 SSH 端口转发访问 Dashboard
+
+在本地终端执行：
+
+```
+ssh -N -L 9090:127.0.0.1:9090 root@<server-ip>
+```
+
+然后在浏览器中访问：
+
+```
+http://127.0.0.1:9090/ui
+```
+
+#### 参数说明
+
+- `-L 9090:127.0.0.1:9090`
+   将本地 `9090` 端口转发到服务器本机的 `9090`
+- `127.0.0.1`
+   表示 Dashboard **仅在服务器本机可访问**
+- `-N`
+   不执行远程命令，仅用于端口转发
+
+> 💡 推荐方式：使用 SSH 隧道访问 Dashboard，而不是直接暴露端口到公网。
+
+
+
 ## subconverter 多架构支持
 
 `subconverter` 用于将订阅内容转换为标准 clash 配置。默认会尝试以下位置：
@@ -342,3 +382,6 @@ sudo chmod +x /etc/rc.local
    目前此项目已集成自动识别和转换clash配置文件的功能。如果依然无法使用，则需要通过自建或者第三方平台（不推荐，有泄露风险）对订阅地址转换。
    
 3. 程序日志中出现`error: unsupported rule type RULE-SET`报错，解决方法查看官方[WIKI](https://github.com/Dreamacro/clash/wiki/FAQ#error-unsupported-rule-type-rule-set)
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=wnlen/clash-for-linux&type=Date)](https://star-history.com/#wnlen/clash-for-linux&Date)
