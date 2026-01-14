@@ -45,7 +45,7 @@
 ### 更新状态
 
 📅 **持续维护中**
- 最近更新：**2026-01-13**
+ 最近更新：**2026-01-15**
 
 
 
@@ -72,16 +72,7 @@ sudo bash install.sh
 - 安装 `clashctl` 到 `/usr/local/bin`
 - 创建低权限运行用户（默认 `clash`）
 
-### 可选安装参数
-
-```
-CLASH_INSTALL_DIR=/opt/clash-for-linux
-CLASH_SERVICE_USER=clash
-CLASH_ENABLE_SERVICE=true
-CLASH_START_SERVICE=true
-CLASH_AUTO_DOWNLOAD=auto
-CLASH_DOWNLOAD_URL_TEMPLATE=https://github.com/Dreamacro/clash/releases/latest/download/clash-{arch}.gz
-```
+### 进阶安装：
 
 ------
 
@@ -90,8 +81,7 @@ CLASH_DOWNLOAD_URL_TEMPLATE=https://github.com/Dreamacro/clash/releases/latest/d
 编辑 `.env` 文件，设置订阅地址：
 
 ```
-vim .env
-CLASH_URL=https://example.com/your-subscribe
+sudo bash -c 'echo "CLASH_URL=<订阅地址>" > /opt/clash-for-linux/.env'
 ```
 
 说明：
@@ -102,13 +92,32 @@ CLASH_URL=https://example.com/your-subscribe
 
 ------
 
-## ▶️ 启动与代理设置
+## 🌐 打开 Clash 管理面板（推荐）
 
-### 启动服务（systemd 安装后通常已自动启动）
+出于安全考虑，管理接口默认 **仅监听服务器本机**：
 
 ```
-clashctl status
+127.0.0.1:9090
 ```
+
+如需在 **本地浏览器** 中访问服务器上的管理面板，
+ 请使用 SSH 端口转发（本地终端）：
+
+```
+ssh -N -L 9090:127.0.0.1:9090 root@<服务器IP>
+```
+
+然后在浏览器中访问：
+
+```
+http://127.0.0.1:9090/ui
+```
+
+> 不建议直接将管理端口暴露到公网。
+
+------
+
+## ▶️ 开启 / 关闭系统代理
 
 ### 加载环境变量并开启代理
 
@@ -125,7 +134,7 @@ proxy_off
 
 ------
 
-## 🧰 clashctl 管理命令
+## 🧰 常用管理命令
 
 统一管理入口（推荐使用）：
 
