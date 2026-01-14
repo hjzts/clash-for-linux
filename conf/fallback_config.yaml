@@ -1,0 +1,15 @@
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: info
+
+proxies: []
+
+proxy-groups:
+  - name: DIRECT
+    type: select
+    proxies:
+      - DIRECT
+
+rules:
+  - MATCH,DIRECT
