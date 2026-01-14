@@ -35,7 +35,7 @@
 - 需要稳定访问 GitHub、Go / Node / Docker 生态的开发环境
 - 不希望长期手动维护 Clash 运行状态的用户
 
-### 项目定位说明（很重要，避免误解）
+### 项目定位说明
 
 - ✅ 本项目 **不提供任何订阅内容**，仅负责运行与管理
 - ✅ 本项目是 **Clash / yacd 的工程化封装**，并非 Clash 的替代品
@@ -46,22 +46,6 @@
 
 📅 **持续维护中**
  最近更新：**2026-01-13**
-  
-# 使用须知
-- 支持普通用户运行，涉及 systemd 安装/端口转发等系统级操作时需要 root 或 sudo。
-- 使用过程中如遇到问题，请优先查已有的 [issues](https://github.com/wanhebin/clash-for-linux/issues)。
-- 在进行issues提交前，请替换提交内容中是敏感信息（例如：订阅地址）。
-- 本项目是基于 [clash](https://github.com/Dreamacro/clash) 、[yacd](https://github.com/haishanh/yacd) 进行的配置整合，关于clash、yacd的详细配置请去原项目查看。
-- 此项目不提供任何订阅信息，请自行准备Clash订阅地址。
-- 运行前请手动更改`.env`文件中的`CLASH_URL`变量值，否则无法正常运行。
-- 默认将管理面板仅绑定到本机（`127.0.0.1:9090`），如需对外访问请在`.env`中自行配置并确保`CLASH_SECRET`足够复杂。
-- 默认开启 TLS 证书校验，若确需跳过校验请在`.env`中设置`ALLOW_INSECURE_TLS=true`（不推荐）。
-- 如从旧版本升级，若存在 `/etc/profile.d/clash.sh` 请按需清理或改用新的 `/etc/profile.d/clash-for-linux.sh`。
-- 当前在RHEL系列和Debian系列Linux系统中测试过，其他系列可能需要适当修改脚本。
-- 内置 Clash 二进制支持 x86_64/aarch64/armv7，其它架构可自行放置二进制并通过 `CLASH_BIN` 指定路径。
-
-> **注意**：当你在使用此项目时，遇到任何无法独自解决的问题请优先前往 [Issues](https://github.com/wanhebin/clash-for-linux/issues) 寻找解决方法。由于空闲时间有限，后续将不再对Issues中 “已经解答”、“已有解决方案” 的问题进行重复性的回答。
-
 <br>
 
 # 使用教程
