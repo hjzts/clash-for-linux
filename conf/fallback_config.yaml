@@ -1,9 +1,24 @@
 mixed-port: 7890
 allow-lan: false
+bind-address: '*'
 mode: rule
 log-level: info
-
+ipv6: true
+external-controller: 127.0.0.1:9090
+secret: "${CLASH_SECRET}" 
+external-ui: /opt/clash-for-linux/ui
+dns:
+  enable: true
+  listen: 127.0.0.1:1053
+  enhanced-mode: fake-ip
+  nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
 proxies: []
-
+proxy-groups:
+  - name: "DIRECT"
+    type: select
+    proxies:
+      - DIRECT
 rules:
   - MATCH,DIRECT
