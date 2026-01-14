@@ -7,13 +7,14 @@ ipv6: true
 udp: true
 
 external-controller: 127.0.0.1:9090
-external-ui: /opt/clash-for-linux/dashboard/public
+external-ui: /opt/clash-for-linux/conf/ui
 
 proxies: []
 proxy-groups: []
 
 rules:
   - MATCH,DIRECT
+
 
 
 
