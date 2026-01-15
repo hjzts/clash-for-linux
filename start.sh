@@ -33,10 +33,24 @@ fi
 #################### 变量设置 ####################
 
 Conf_Dir="$Server_Dir/conf"
-Temp_Dir="$Server_Dir/temp"
-Log_Dir="$Server_Dir/logs"
 
-mkdir -p "$Conf_Dir" "$Temp_Dir" "$Log_Dir"
+# systemd + 非 root 运行（clash 用户）时，临时目录与日志目录必须可写
+if [ "${SYSTEMD_MODE:-false}" = "true" ] && [ "$(id -u)" -ne 0 ]; then
+  Temp_Dir="/tmp/clash-for-linux"
+  Log_Dir="/tmp/clash-for-linux/logs"
+else
+  Temp_Dir="$Server_Dir/temp"
+  Log_Dir="$Server_Dir/logs"
+fi
+
+mkdir -p "$Conf_Dir" "$Temp_Dir" "$Log_Dir" || {
+  echo "[ERR] cannot create dirs: Conf_Dir=$Conf_Dir Temp_Dir=$Temp_Dir Log_Dir=$Log_Dir"
+  exit 2
+}
+
+# 再做一次可写性检查，避免后面玄学 exit
+touch "$Temp_Dir/.write_test" 2>/dev/null || { echo "[ERR] Temp_Dir not writable: $Temp_Dir"; exit 2; }
+rm -f "$Temp_Dir/.write_test" 2>/dev/null || true
 
 PID_FILE="${CLASH_PID_FILE:-$Temp_Dir/clash.pid}"
 
@@ -314,10 +328,13 @@ fi
 
 #################### 订阅转换/拼接（非兜底路径） ####################
 if [ "$SKIP_CONFIG_REBUILD" != "true" ]; then
-  # 重命名订阅文件
+  # 运行期配置文件：默认用 Temp_Dir（systemd + clash 用户可写）
+  CONFIG_FILE="$Temp_Dir/config.yaml"
+
+  # 1) 重命名订阅文件
   \cp -a "$Temp_Dir/clash.yaml" "$Temp_Dir/clash_config.yaml"
 
-  # 判断订阅内容是否符合clash配置文件标准，尝试转换（需 subconverter 可执行文件支持）
+  # 2) 判断订阅内容是否符合 clash 配置文件标准，尝试转换（需 subconverter）
   # shellcheck disable=SC1090
   source "$Server_Dir/scripts/resolve_subconverter.sh"
 
@@ -330,59 +347,70 @@ if [ "$SKIP_CONFIG_REBUILD" != "true" ]; then
     echo -e "\033[33m[WARN]\033[0m 未检测到可用的 subconverter，跳过订阅转换"
   fi
 
-  # 取出代理相关配置
+  # 3) 取出代理相关配置（从 proxies: 开始）
   sed -n '/^proxies:/,$p' "$Temp_Dir/clash_config.yaml" > "$Temp_Dir/proxy.txt"
 
-  # 合并形成新的config.yaml，并替换配置占位符
-  cat "$Temp_Dir/templete_config.yaml" > "$Temp_Dir/config.yaml"
-  cat "$Temp_Dir/proxy.txt" >> "$Temp_Dir/config.yaml"
+  # 4) 合并形成新的 config，并替换配置占位符
+  cat "$Temp_Dir/templete_config.yaml" > "$CONFIG_FILE"
+  cat "$Temp_Dir/proxy.txt" >> "$CONFIG_FILE"
 
-  # 替换配置文件中的占位符为环境变量值
-  sed -i "s/CLASH_HTTP_PORT_PLACEHOLDER/${CLASH_HTTP_PORT}/g" "$Temp_Dir/config.yaml"
-  sed -i "s/CLASH_SOCKS_PORT_PLACEHOLDER/${CLASH_SOCKS_PORT}/g" "$Temp_Dir/config.yaml"
-  sed -i "s/CLASH_REDIR_PORT_PLACEHOLDER/${CLASH_REDIR_PORT}/g" "$Temp_Dir/config.yaml"
-  sed -i "s/CLASH_LISTEN_IP_PLACEHOLDER/${CLASH_LISTEN_IP}/g" "$Temp_Dir/config.yaml"
-  sed -i "s/CLASH_ALLOW_LAN_PLACEHOLDER/${CLASH_ALLOW_LAN}/g" "$Temp_Dir/config.yaml"
+  sed -i "s/CLASH_HTTP_PORT_PLACEHOLDER/${CLASH_HTTP_PORT}/g" "$CONFIG_FILE"
+  sed -i "s/CLASH_SOCKS_PORT_PLACEHOLDER/${CLASH_SOCKS_PORT}/g" "$CONFIG_FILE"
+  sed -i "s/CLASH_REDIR_PORT_PLACEHOLDER/${CLASH_REDIR_PORT}/g" "$CONFIG_FILE"
+  sed -i "s/CLASH_LISTEN_IP_PLACEHOLDER/${CLASH_LISTEN_IP}/g" "$CONFIG_FILE"
+  sed -i "s/CLASH_ALLOW_LAN_PLACEHOLDER/${CLASH_ALLOW_LAN}/g" "$CONFIG_FILE"
 
-  # 配置 external-controller
+  # 5) 配置 external-controller
   if [ "$EXTERNAL_CONTROLLER_ENABLED" = "true" ]; then
-    sed -i "s/EXTERNAL_CONTROLLER_PLACEHOLDER/${EXTERNAL_CONTROLLER}/g" "$Temp_Dir/config.yaml"
+    sed -i "s/EXTERNAL_CONTROLLER_PLACEHOLDER/${EXTERNAL_CONTROLLER}/g" "$CONFIG_FILE"
   else
-    sed -i "s/external-controller: 'EXTERNAL_CONTROLLER_PLACEHOLDER'/# external-controller: disabled/g" "$Temp_Dir/config.yaml"
+    sed -i "s/external-controller: 'EXTERNAL_CONTROLLER_PLACEHOLDER'/# external-controller: disabled/g" "$CONFIG_FILE"
   fi
 
-  apply_tun_config "$Temp_Dir/config.yaml"
-  apply_mixin_config "$Temp_Dir/config.yaml" "$Server_Dir"
+  apply_tun_config "$CONFIG_FILE"
+  apply_mixin_config "$CONFIG_FILE" "$Server_Dir"
 
-  \cp "$Temp_Dir/config.yaml" "$Conf_Dir/"
+  # 6) 是否同步到 conf（root/非 systemd 时才做；systemd+非root跳过）
+  if [ "${SYSTEMD_MODE:-false}" = "true" ] && [ "$(id -u)" -ne 0 ]; then
+    echo "[WARN] systemd(non-root): skip copying config to $Conf_Dir"
+  else
+    \cp "$CONFIG_FILE" "$Conf_Dir/"
+  fi
 
-  # Configure Clash Dashboard
+  # 7) Dashboard external-ui（systemd+非root：把 ui 放 Temp_Dir 下，避免写 conf）
   Work_Dir="$(cd "$(dirname "$0")" && pwd)"
-
-  # SAFE_PATHS: only allow paths under $Conf_Dir, so place dashboard under conf via symlink
   Dashboard_Src="${Work_Dir}/dashboard/public"
-  Dashboard_Link="${Conf_Dir}/ui"
-  
+
   if [ "$EXTERNAL_CONTROLLER_ENABLED" = "true" ]; then
-    # create/update symlink
-    if [ -d "$Dashboard_Src" ]; then
-      ln -sfn "$Dashboard_Src" "$Dashboard_Link"
+    if [ "${SYSTEMD_MODE:-false}" = "true" ] && [ "$(id -u)" -ne 0 ]; then
+      # runtime ui path (writable)
+      Dashboard_Link="$Temp_Dir/ui"
+      if [ -d "$Dashboard_Src" ]; then
+        ln -sfn "$Dashboard_Src" "$Dashboard_Link" 2>/dev/null || true
+      fi
     else
-      echo -e "\033[33m[WARN]\033[0m Dashboard source not found: $Dashboard_Src (external-ui may not work)"
+      # conf ui path (root can manage)
+      Dashboard_Link="${Conf_Dir}/ui"
+      if [ -d "$Dashboard_Src" ]; then
+        ln -sfn "$Dashboard_Src" "$Dashboard_Link" || true
+      else
+        echo -e "\033[33m[WARN]\033[0m Dashboard source not found: $Dashboard_Src (external-ui may not work)"
+      fi
     fi
-  
-    # ensure external-ui points to conf subpath
-    if grep -qE '^[[:space:]]*external-ui:' "$Conf_Dir/config.yaml"; then
-      sed -i -E "s|^[[:space:]]*external-ui:.*$|external-ui: ${Dashboard_Link}|g" "$Conf_Dir/config.yaml"
+
+    # ensure external-ui points to Dashboard_Link
+    if grep -qE '^[[:space:]]*external-ui:' "$CONFIG_FILE"; then
+      sed -i -E "s|^[[:space:]]*external-ui:.*$|external-ui: ${Dashboard_Link}|g" "$CONFIG_FILE"
     else
-      printf "\nexternal-ui: %s\n" "$Dashboard_Link" >> "$Conf_Dir/config.yaml"
+      printf "\nexternal-ui: %s\n" "$Dashboard_Link" >> "$CONFIG_FILE"
     fi
   fi
 
-  # 写入 secret
-  force_write_secret "$Conf_Dir/config.yaml"
+  # 8) 写入 secret（写到 runtime config）
+  force_write_secret "$CONFIG_FILE"
+
 else
-  # 兜底路径：尽量也写入 secret（若 config 里有 secret: 行就替换；没有就追加）
+  # 兜底路径：尽量也写入 secret（conf/config.yaml 可写时）
   if grep -qE '^secret:\s*' "$Conf_Dir/config.yaml" 2>/dev/null; then
     force_write_secret "$Conf_Dir/config.yaml"
   else
@@ -392,17 +420,36 @@ fi
 
 #################### 启动Clash服务 ####################
 
-# 启动前确保 config.yaml 存在且非空
-if [ ! -s "$Conf_Dir/config.yaml" ]; then
-  echo -e "\033[31m[ERROR]\033[0m conf/config.yaml 不存在或为空，无法启动 Clash" >&2
-  exit 1
+# 选择运行期配置文件与工作目录
+# - systemd + 非 root(通常 User=clash)：用 Temp_Dir 下的运行态配置，工作目录也用 Temp_Dir（可写）
+# - 其他情况：用 Conf_Dir/config.yaml，工作目录用 Conf_Dir
+if [ "${SYSTEMD_MODE:-false}" = "true" ] && [ "$(id -u)" -ne 0 ]; then
+  CONFIG_FILE="${CONFIG_FILE:-$Temp_Dir/config.yaml}"
+  RUNTIME_DIR="${Temp_Dir}"
+else
+  CONFIG_FILE="${CONFIG_FILE:-$Conf_Dir/config.yaml}"
+  RUNTIME_DIR="${Conf_Dir}"
+fi
+
+# 启动前确保配置文件存在且非空
+if [ ! -s "$CONFIG_FILE" ]; then
+  echo -e "\033[31m[ERROR]\033[0m config 不存在或为空：$CONFIG_FILE，无法启动 Clash" >&2
+  exit 2
 fi
 
 # 最终护栏：禁止未渲染的占位符进入运行态
-if grep -q '\${' "$Conf_Dir/config.yaml"; then
-  echo "[ERROR] config.yaml contains unresolved placeholders (\${...}). Please check template rendering." >&2
-  exit 1
+if grep -q '\${' "$CONFIG_FILE"; then
+  echo "[ERROR] config contains unresolved placeholders (\${...}): $CONFIG_FILE" >&2
+  exit 2
 fi
+
+# 确保运行目录存在且可写（clash/mihomo 可能会写 cache/geo 数据）
+mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
+touch "$RUNTIME_DIR/.write_test" 2>/dev/null || {
+  echo "[ERROR] runtime dir not writable: $RUNTIME_DIR (uid=$(id -u))" >&2
+  exit 2
+}
+rm -f "$RUNTIME_DIR/.write_test" 2>/dev/null || true
 
 echo -e '\n正在启动Clash服务...'
 Text5="服务启动成功！"
@@ -414,11 +461,15 @@ ReturnStatus=$?
 if [ "$ReturnStatus" -eq 0 ]; then
   if [ "${SYSTEMD_MODE:-false}" = "true" ]; then
     echo "[INFO] SYSTEMD_MODE=true，前台启动交给 systemd 监管"
+    echo "[INFO] Using config: $CONFIG_FILE"
+    echo "[INFO] Using runtime dir: $RUNTIME_DIR"
     # systemd 前台：让 systemd 直接跟踪 clash 进程
-    exec "$Clash_Bin" -d "$Conf_Dir"
+    exec "$Clash_Bin" -d "$RUNTIME_DIR" -f "$CONFIG_FILE"
   else
     echo "[INFO] 后台启动 (nohup)"
-    nohup "$Clash_Bin" -d "$Conf_Dir" >>"$Log_Dir/clash.log" 2>&1 &
+    echo "[INFO] Using config: $CONFIG_FILE"
+    echo "[INFO] Using runtime dir: $RUNTIME_DIR"
+    nohup "$Clash_Bin" -d "$RUNTIME_DIR" -f "$CONFIG_FILE" >>"$Log_Dir/clash.log" 2>&1 &
     PID=$!
     ReturnStatus=$?
     if [ "$ReturnStatus" -eq 0 ]; then
