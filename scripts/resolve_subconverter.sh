@@ -1,100 +1,78 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-Subconverter_Bin=""
+# 作用：
+# - 检测 tools/subconverter/subconverter 是否存在
+# -（可选）以 daemon 模式启动本地 subconverter（HTTP 服务）
+# - 导出统一变量给后续脚本使用：
+#   SUBCONVERTER_BIN / SUBCONVERTER_READY / SUBCONVERTER_URL
+#
+# 设计原则：
+# - 永不 exit 1（不可用就 Ready=false，主流程继续）
+# - 不阻塞 start.sh（快速启动，不等待健康检查）
+
+Server_Dir="${Server_Dir:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+Temp_Dir="${Temp_Dir:-$Server_Dir/temp}"
+
+mkdir -p "$Temp_Dir"
+
+Subconverter_Bin="$Server_Dir/tools/subconverter/subconverter"
 Subconverter_Ready=false
 
-Subconverter_Dir="${Server_Dir}/tools/subconverter"
-Default_Bin="${Subconverter_Dir}/subconverter"
+# 配置项（可放 .env）
+SUBCONVERTER_MODE="${SUBCONVERTER_MODE:-daemon}"     # daemon | off
+SUBCONVERTER_HOST="${SUBCONVERTER_HOST:-127.0.0.1}"
+SUBCONVERTER_PORT="${SUBCONVERTER_PORT:-25500}"
+SUBCONVERTER_URL="${SUBCONVERTER_URL:-http://${SUBCONVERTER_HOST}:${SUBCONVERTER_PORT}}"
 
-resolve_subconverter_arch() {
-	local raw_arch="$1"
-	case "$raw_arch" in
-		x86_64|amd64)
-			echo "linux-amd64"
-			;;
-		aarch64|arm64)
-			echo "linux-arm64"
-			;;
-		armv7*|armv7l)
-			echo "linux-armv7"
-			;;
-		*)
-			echo ""
-			;;
-	esac
-}
+# pref.ini：不存在就从示例生成
+SUBCONVERTER_PREF="${SUBCONVERTER_PREF:-$Server_Dir/tools/subconverter/pref.ini}"
+PREF_EXAMPLE_INI="$Server_Dir/tools/subconverter/pref.example.ini"
 
-try_subconverter_bin() {
-	local candidate="$1"
-	if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-		Subconverter_Bin="$candidate"
-		Subconverter_Ready=true
-		return 0
-	fi
-	return 1
-}
+PID_FILE="$Temp_Dir/subconverter.pid"
 
-# ------------------------------------------------------------
-# FIX: SUBCONVERTER_PATH may be unbound when parent shell uses `set -u`
-# Use ${SUBCONVERTER_PATH:-} to avoid "unbound variable"
-# ------------------------------------------------------------
-SUBCONVERTER_PATH_SAFE="${SUBCONVERTER_PATH:-}"
-
-if [ -n "$SUBCONVERTER_PATH_SAFE" ]; then
-	try_subconverter_bin "$SUBCONVERTER_PATH_SAFE" && return 0
+# 1) 二进制存在性
+if [ -x "$Subconverter_Bin" ]; then
+  Subconverter_Ready=true
 else
-	try_subconverter_bin "$Default_Bin" && return 0
+  Subconverter_Ready=false
 fi
 
-Detected_Arch="${CpuArch:-$(uname -m 2>/dev/null)}"
-Resolved_Arch="$(resolve_subconverter_arch "$Detected_Arch")"
-
-if [ -n "$Resolved_Arch" ]; then
-	try_subconverter_bin "${Subconverter_Dir}/subconverter-${Resolved_Arch}" && return 0
-	try_subconverter_bin "${Subconverter_Dir}/bin/subconverter-${Resolved_Arch}" && return 0
-	try_subconverter_bin "${Subconverter_Dir}/${Resolved_Arch}/subconverter" && return 0
+# 2) pref.ini 生成（仅当准备启用 daemon）
+if [ "$Subconverter_Ready" = "true" ] && [ "$SUBCONVERTER_MODE" = "daemon" ]; then
+  if [ ! -f "$SUBCONVERTER_PREF" ] && [ -f "$PREF_EXAMPLE_INI" ]; then
+    cp -f "$PREF_EXAMPLE_INI" "$SUBCONVERTER_PREF"
+  fi
 fi
 
-Default_Template="https://github.com/tindy2013/subconverter/releases/latest/download/subconverter_{arch}.tar.gz"
-Auto_Download="${SUBCONVERTER_AUTO_DOWNLOAD:-auto}"
-
-if [ "$Auto_Download" != "false" ] && [ -n "$Resolved_Arch" ]; then
-	Download_Template="${SUBCONVERTER_DOWNLOAD_URL_TEMPLATE:-$Default_Template}"
-	if [ -z "$Download_Template" ]; then
-		echo -e "\033[33m[WARN] 未设置 SUBCONVERTER_DOWNLOAD_URL_TEMPLATE，跳过 subconverter 自动下载\033[0m"
-		return 0
-	fi
-
-	Download_Url="${Download_Template//\{arch\}/${Resolved_Arch}}"
-
-	# Ensure temp dirs exist
-	mkdir -p "${Server_Dir}/temp" "${Subconverter_Dir}"
-
-	Download_Archive="${Server_Dir}/temp/subconverter-${Resolved_Arch}.tar.gz"
-	Extract_Dir="${Server_Dir}/temp/subconverter-${Resolved_Arch}"
-	mkdir -p "${Extract_Dir}"
-
-	if command -v curl >/dev/null 2>&1; then
-		curl -L -sS -o "${Download_Archive}" "${Download_Url}"
-	elif command -v wget >/dev/null 2>&1; then
-		wget -q -O "${Download_Archive}" "${Download_Url}"
-	else
-		echo -e "\033[33m[WARN] 未找到 curl 或 wget，无法自动下载 subconverter\033[0m"
-		return 0
-	fi
-
-	# Only extract if archive exists and is non-empty
-	if [ -s "${Download_Archive}" ]; then
-		tar -xzf "${Download_Archive}" -C "${Extract_Dir}" 2>/dev/null
-		Downloaded_Bin="$(find "${Extract_Dir}" -maxdepth 3 -type f -name "subconverter" -print -quit)"
-		if [ -n "${Downloaded_Bin}" ]; then
-			mv "${Downloaded_Bin}" "${Subconverter_Dir}/subconverter-${Resolved_Arch}"
-			chmod +x "${Subconverter_Dir}/subconverter-${Resolved_Arch}"
-			try_subconverter_bin "${Subconverter_Dir}/subconverter-${Resolved_Arch}" && return 0
-		fi
-	fi
-
-	echo -e "\033[33m[WARN] subconverter 自动下载失败，跳过订阅转换\033[0m"
+# 3) daemon 启动（只在需要时）
+if [ "$Subconverter_Ready" = "true" ] && [ "$SUBCONVERTER_MODE" = "daemon" ]; then
+  # pid 存活则认为已启动
+  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+    :
+  else
+    # 端口已监听则不重复起（可能是之前启动的）
+    if command -v ss >/dev/null 2>&1 && ss -lnt | awk '{print $4}' | grep -q ":${SUBCONVERTER_PORT}\$"; then
+      :
+    else
+      (
+        cd "$Server_Dir/tools/subconverter"
+        # 注意：subconverter 读取 base/rules/snippets 等目录，必须在其目录下启动更稳
+        nohup "$Subconverter_Bin" -f "$SUBCONVERTER_PREF" >/dev/null 2>&1 &
+        echo $! > "$PID_FILE"
+      )
+      # 给一点点启动时间（不要长等，避免阻塞）
+      sleep 0.2
+    fi
+  fi
 fi
 
-return 0
+# 4) 统一导出（给后续脚本用）
+export Subconverter_Bin
+export Subconverter_Ready
+export SUBCONVERTER_BIN="$Subconverter_Bin"
+export SUBCONVERTER_READY="$Subconverter_Ready"
+export SUBCONVERTER_URL
+
+# 永不失败
+true
